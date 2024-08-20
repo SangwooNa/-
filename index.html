@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>등각투상도 용지</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            touch-action: manipulation;
+        }
+        .grid-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: 600px;
+            background: repeating-linear-gradient(
+                0deg,
+                #ddd,
+                #ddd 1px,
+                transparent 1px,
+                transparent 30px
+            ),
+            repeating-linear-gradient(
+                90deg,
+                #ddd,
+                #ddd 1px,
+                transparent 1px,
+                transparent 30px
+            );
+            cursor: crosshair;
+            transform-origin: center center;
+        }
+        .line {
+            stroke: black;
+            stroke-width: 2px;
+            transition: stroke 0.2s;
+        }
+        .line-hover {
+            stroke: red;
+        }
+        .wide-line {
+            stroke-width: 40px; /* 인식 범위 2배로 확대 */
+            stroke: transparent;
+            cursor: pointer;
+        }
+        .eraser {
+            cursor: pointer;
+            background-color: red;
+            opacity: 0.5;
+        }
+        .eraser-active {
+            background-color: rgba(255, 0, 0, 0.8);
+        }
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .toolbar button {
+            padding: 15px 30px; /* 더 큰 터치 타겟 */
+            font-size: 18px; /* 가독성을 위한 폰트 크기 */
+            cursor: pointer;
+        }
+        .snap-indicator {
+            fill: gray;
+            opacity: 0.5;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% {
+                opacity: 0.5;
+            }
+            50% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0.5;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button id="draw-mode-btn">그리기 모드</button>
+        <button id="delete-mode-btn">삭제 모드</button>
+        <button id="undo-btn">작업 취소</button>
+        <button id="zoom-in-btn">+</button>
+        <button id="zoom-out-btn">-</button>
+    </div>
+    <div class="grid-container" id="grid">
+        <svg width="100%" height="100%"></svg>
+    </div>
+
+    <script>
+        const grid = document.getElementById('grid');
+        const svg = grid.querySelector('svg');
+        const cellSize = 30;
+        let firstPoint = null;
+        let lines = [];
+        let isDrawingMode = true;
+        let history = [];
+        let snapIndicator = null;
+
+        function snapToGrid(x, y) {
+            const snappedX = Math.round(x / cellSize) * cellSize;
+            const snappedY = Math.round(y / cellSize) * cellSize;
+            return { x: snappedX, y: snappedY };
+        }
+
+        function updateSnapIndicator(x, y) {
+            const snappedPoint = snapToGrid(x, y);
+
+            if (!snapIndicator) {
+                snapIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                snapIndicator.classList.add('snap-indicator');
+                snapIndicator.setAttribute('r', 5);
+                svg.appendChild(snapIndicator);
+            }
+
+            snapIndicator.setAttribute('cx', snappedPoint.x);
+            snapIndicator.setAttribute('cy', snappedPoint.y);
+        }
+
+        function addLine(x1, y1, x2, y2) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', x1);
+            line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2);
+            line.setAttribute('y2', y2);
+            line.classList.add('line');
+
+            const wideLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            wideLine.setAttribute('x1', x1);
+            wideLine.setAttribute('y1', y1);
+            wideLine.setAttribute('x2', x2);
+            wideLine.setAttribute('y2', y2);
+            wideLine.classList.add('wide-line');
+
+            wideLine.addEventListener('click', handleLineDelete);
+            wideLine.addEventListener('touchstart', handleLineDelete);
+
+            wideLine.addEventListener('mouseenter', () => {
+                if (!isDrawingMode) {
+                    line.classList.add('line-hover');
+                }
+            });
+
+            wideLine.addEventListener('mouseleave', () => {
+                line.classList.remove('line-hover');
+            });
+
+            svg.appendChild(wideLine);
+            svg.appendChild(line);
+
+            lines.push(line);
+            history.push({ type: 'line', line, wideLine });
+        }
+
+        function handleLineDelete(event) {
+            if (!isDrawingMode) {
+                const line = event.target.nextSibling; // 실제 라인을 가져옴
+                const wideLine = event.target;
+
+                svg.removeChild(line);
+                svg.removeChild(wideLine);
+
+                lines = lines.filter(l => l !== line);
+                history.push({ type: 'delete', line, wideLine });
+            }
+        }
+
+        function clearActiveRemoveButton() {
+            if (activeRemoveButton) {
+                activeRemoveButton.style.display = 'none';
+                activeRemoveButton = null;
+            }
+        }
+
+        function handleMove(e) {
+            const touch = e.touches ? e.touches[0] : e;
+            const x = touch.clientX - grid.getBoundingClientRect().left;
+            const y = touch.clientY - grid.getBoundingClientRect().top;
+
+            if (isDrawingMode) {
+                updateSnapIndicator(x, y);
+            } else if (snapIndicator) {
+                snapIndicator.remove();
+                snapIndicator = null;
+            }
+        }
+
+        grid.addEventListener('mousemove', handleMove);
+        grid.addEventListener('touchmove', handleMove);
+
+        function handleDrawing(e) {
+            if (isDrawingMode) {
+                const x = e.offsetX || e.touches[0].clientX - grid.getBoundingClientRect().left;
+                const y = e.offsetY || e.touches[0].clientY - grid.getBoundingClientRect().top;
+
+                const snappedPoint = snapToGrid(x, y);
+
+                if (!firstPoint) {
+                    firstPoint = snappedPoint;
+                } else {
+                    addLine(firstPoint.x, firstPoint.y, snappedPoint.x, snappedPoint.y);
+                    firstPoint = null;
+                }
+            }
+        }
+
+        grid.addEventListener('click', handleDrawing);
+        grid.addEventListener('touchstart', handleDrawing);
+
+        document.getElementById('draw-mode-btn').addEventListener('click', () => {
+            isDrawingMode = true;
+            clearActiveRemoveButton();
+        });
+
+        document.getElementById('delete-mode-btn').addEventListener('click', () => {
+            isDrawingMode = false;
+            if (snapIndicator) {
+                snapIndicator.remove();
+                snapIndicator = null;
+            }
+        });
+
+        document.getElementById('undo-btn').addEventListener('click', () => {
+            const lastAction = history.pop();
+            if (lastAction) {
+                if (lastAction.type === 'line') {
+                    svg.removeChild(lastAction.line);
+                    svg.removeChild(lastAction.wideLine);
+                } else if (lastAction.type === 'delete') {
+                    svg.appendChild(lastAction.wideLine);
+                    svg.appendChild(lastAction.line);
+                    lines.push(lastAction.line);
+                }
+            }
+        });
+
+        document.getElementById('zoom-in-btn').addEventListener('click', () => {
+            grid.style.transform = `scale(${parseFloat(grid.style.transform.replace('scale(', '')) + 0.1 || 1.1})`;
+        });
+
+        document.getElementById('zoom-out-btn').addEventListener('click', () => {
+            grid.style.transform = `scale(${parseFloat(grid.style.transform.replace('scale(', '')) - 0.1 || 0.9})`;
+        });
+    </script>
+</body>
+</html>
