@@ -106,6 +106,10 @@
         let snapIndicator = null;
         let isZooming = false;
         let currentScale = 1;
+        let startDist = 0;
+        let initialScale = 1;
+        let initialPan = { x: 0, y: 0 };
+        let panOffset = { x: 0, y: 0 };
 
         function snapToGrid(x, y) {
             const snappedX = Math.round(x / cellSize) * cellSize;
@@ -115,8 +119,8 @@
 
         function getTransformedPoint(x, y) {
             const svgRect = svg.getBoundingClientRect();
-            const offsetX = (x - svgRect.left) / currentScale;
-            const offsetY = (y - svgRect.top) / currentScale;
+            const offsetX = (x - svgRect.left - panOffset.x) / currentScale;
+            const offsetY = (y - svgRect.top - panOffset.y) / currentScale;
             return { x: offsetX, y: offsetY };
         }
 
@@ -237,6 +241,14 @@
         grid.addEventListener('touchstart', (e) => {
             if (e.touches.length === 2) {
                 isZooming = true;
+                startDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                initialScale = currentScale;
+            } else if (e.touches.length === 1) {
+                isZooming = false;
+                initialPan = { x: panOffset.x, y: panOffset.y };
             }
         });
 
@@ -249,7 +261,7 @@
         grid.addEventListener('wheel', (e) => {
             e.preventDefault();
             currentScale *= e.deltaY < 0 ? 1.1 : 0.9;
-            grid.style.transform = `scale(${currentScale})`;
+            grid.style.transform = `scale(${currentScale}) translate(${panOffset.x}px, ${panOffset.y}px)`;
         });
 
         grid.addEventListener('touchmove', (e) => {
@@ -258,14 +270,14 @@
                     e.touches[0].clientX - e.touches[1].clientX,
                     e.touches[0].clientY - e.touches[1].clientY
                 );
-                const initialDist = grid.dataset.initialDist;
-                if (!initialDist) {
-                    grid.dataset.initialDist = dist;
-                    grid.dataset.initialScale = currentScale;
-                } else {
-                    currentScale = (dist / initialDist) * grid.dataset.initialScale;
-                    grid.style.transform = `scale(${currentScale})`;
-                }
+                currentScale = (dist / startDist) * initialScale;
+                grid.style.transform = `scale(${currentScale}) translate(${panOffset.x}px, ${panOffset.y}px)`;
+            } else if (e.touches.length === 1) {
+                const deltaX = e.touches[0].clientX - e.touches[0].pageX;
+                const deltaY = e.touches[0].clientY - e.touches[0].pageY;
+                panOffset.x = initialPan.x + deltaX;
+                panOffset.y = initialPan.y + deltaY;
+                grid.style.transform = `scale(${currentScale}) translate(${panOffset.x}px, ${panOffset.y}px)`;
             }
         });
 
