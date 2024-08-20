@@ -38,7 +38,7 @@
             width: 100%;
             max-width: 600px;
             height: calc(100vh - 60px);
-            cursor: crosshair;
+            cursor: grab;
             transform-origin: center center;
             overflow: hidden;
             touch-action: none;
@@ -104,11 +104,9 @@
         let firstPoint = null;
         let isDrawingMode = true;
         let snapIndicator = null;
-        let isZooming = false;
+        let isPanning = false;
         let currentScale = 1;
-        let startDist = 0;
-        let initialScale = 1;
-        let initialPan = { x: 0, y: 0 };
+        let startPan = { x: 0, y: 0 };
         let panOffset = { x: 0, y: 0 };
 
         function snapToGrid(x, y) {
@@ -195,7 +193,19 @@
         }
 
         function handleMove(e) {
-            if (isZooming) return; // 확대/축소 중일 때는 이동 처리 중지
+            if (isPanning) {
+                const touch = e.touches ? e.touches[0] : e;
+                const x = touch.clientX - startPan.x;
+                const y = touch.clientY - startPan.y;
+
+                panOffset.x += x;
+                panOffset.y += y;
+                grid.style.transform = `scale(${currentScale}) translate(${panOffset.x}px, ${panOffset.y}px)`;
+
+                startPan.x = touch.clientX;
+                startPan.y = touch.clientY;
+                return;
+            }
 
             const touch = e.touches ? e.touches[0] : e;
             const x = touch.clientX;
@@ -210,26 +220,38 @@
         }
 
         function handleStart(e) {
-            e.preventDefault(); // 기본 터치 동작 방지
-            if (isZooming) return; // 확대/축소 중일 때는 그리기 중지
+            if (e.touches && e.touches.length === 1) {
+                isPanning = true;
+                startPan.x = e.touches[0].clientX;
+                startPan.y = e.touches[0].clientY;
+                grid.style.cursor = 'grabbing';
+            }
 
-            const touch = e.touches ? e.touches[0] : e;
-            const x = touch.clientX;
-            const y = touch.clientY;
+            if (!isPanning && e.type === "click") {
+                e.preventDefault(); // 기본 터치 동작 방지
+                const touch = e.touches ? e.touches[0] : e;
+                const x = touch.clientX;
+                const y = touch.clientY;
 
-            const point = getTransformedPoint(x, y);
-            const snappedPoint = snapToGrid(point.x, point.y);
+                const point = getTransformedPoint(x, y);
+                const snappedPoint = snapToGrid(point.x, point.y);
 
-            showClickIndicator(snappedPoint.x, snappedPoint.y);
+                showClickIndicator(snappedPoint.x, snappedPoint.y);
 
-            if (isDrawingMode) {
-                if (!firstPoint) {
-                    firstPoint = snappedPoint;
-                } else {
-                    addLine(firstPoint.x, firstPoint.y, snappedPoint.x, snappedPoint.y);
-                    firstPoint = null;
+                if (isDrawingMode) {
+                    if (!firstPoint) {
+                        firstPoint = snappedPoint;
+                    } else {
+                        addLine(firstPoint.x, firstPoint.y, snappedPoint.x, snappedPoint.y);
+                        firstPoint = null;
+                    }
                 }
             }
+        }
+
+        function handleEnd() {
+            isPanning = false;
+            grid.style.cursor = 'grab';
         }
 
         grid.addEventListener('mousemove', handleMove);
@@ -238,47 +260,12 @@
         grid.addEventListener('click', handleStart);
         grid.addEventListener('touchstart', handleStart);
 
-        grid.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) {
-                isZooming = true;
-                startDist = Math.hypot(
-                    e.touches[0].clientX - e.touches[1].clientX,
-                    e.touches[0].clientY - e.touches[1].clientY
-                );
-                initialScale = currentScale;
-            } else if (e.touches.length === 1) {
-                isZooming = false;
-                initialPan = { x: panOffset.x, y: panOffset.y };
-            }
-        });
-
-        grid.addEventListener('touchend', (e) => {
-            if (e.touches.length < 2) {
-                isZooming = false;
-            }
-        });
+        grid.addEventListener('touchend', handleEnd);
 
         grid.addEventListener('wheel', (e) => {
             e.preventDefault();
             currentScale *= e.deltaY < 0 ? 1.1 : 0.9;
             grid.style.transform = `scale(${currentScale}) translate(${panOffset.x}px, ${panOffset.y}px)`;
-        });
-
-        grid.addEventListener('touchmove', (e) => {
-            if (isZooming && e.touches.length === 2) {
-                const dist = Math.hypot(
-                    e.touches[0].clientX - e.touches[1].clientX,
-                    e.touches[0].clientY - e.touches[1].clientY
-                );
-                currentScale = (dist / startDist) * initialScale;
-                grid.style.transform = `scale(${currentScale}) translate(${panOffset.x}px, ${panOffset.y}px)`;
-            } else if (e.touches.length === 1) {
-                const deltaX = e.touches[0].clientX - e.touches[0].pageX;
-                const deltaY = e.touches[0].clientY - e.touches[0].pageY;
-                panOffset.x = initialPan.x + deltaX;
-                panOffset.y = initialPan.y + deltaY;
-                grid.style.transform = `scale(${currentScale}) translate(${panOffset.x}px, ${panOffset.y}px)`;
-            }
         });
 
         document.getElementById('draw-mode-btn').addEventListener('click', () => {
