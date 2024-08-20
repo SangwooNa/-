@@ -10,14 +10,34 @@
             flex-direction: column;
             align-items: center;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             touch-action: manipulation;
+            overflow: hidden;
+        }
+        .toolbar {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            background-color: #f1f1f1;
+            padding: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+        }
+        .toolbar button {
+            padding: 15px 30px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 0 5px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
         }
         .grid-container {
             position: relative;
             width: 100%;
             max-width: 600px;
-            height: 600px;
+            height: calc(100vh - 60px);
             background: repeating-linear-gradient(
                 0deg,
                 #ddd,
@@ -34,6 +54,8 @@
             );
             cursor: crosshair;
             transform-origin: center center;
+            overflow: hidden;
+            touch-action: none;
         }
         .line {
             stroke: black;
@@ -46,25 +68,6 @@
         .wide-line {
             stroke-width: 40px; /* 인식 범위 2배로 확대 */
             stroke: transparent;
-            cursor: pointer;
-        }
-        .eraser {
-            cursor: pointer;
-            background-color: red;
-            opacity: 0.5;
-        }
-        .eraser-active {
-            background-color: rgba(255, 0, 0, 0.8);
-        }
-        .toolbar {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-        .toolbar button {
-            padding: 15px 30px; /* 더 큰 터치 타겟 */
-            font-size: 18px; /* 가독성을 위한 폰트 크기 */
             cursor: pointer;
         }
         .snap-indicator {
@@ -90,8 +93,6 @@
         <button id="draw-mode-btn">그리기 모드</button>
         <button id="delete-mode-btn">삭제 모드</button>
         <button id="undo-btn">작업 취소</button>
-        <button id="zoom-in-btn">+</button>
-        <button id="zoom-out-btn">-</button>
     </div>
     <div class="grid-container" id="grid">
         <svg width="100%" height="100%"></svg>
@@ -104,6 +105,7 @@
         let firstPoint = null;
         let isDrawingMode = true;
         let snapIndicator = null;
+        let isZooming = false;
 
         function snapToGrid(x, y) {
             const snappedX = Math.round(x / cellSize) * cellSize;
@@ -168,6 +170,8 @@
         }
 
         function handleMove(e) {
+            if (isZooming) return; // 확대/축소 중일 때는 이동 처리 중지
+
             const touch = e.touches ? e.touches[0] : e;
             const x = touch.clientX - grid.getBoundingClientRect().left;
             const y = touch.clientY - grid.getBoundingClientRect().top;
@@ -182,13 +186,15 @@
 
         function handleStart(e) {
             e.preventDefault(); // 기본 터치 동작 방지
+            if (isZooming) return; // 확대/축소 중일 때는 그리기 중지
+
+            const touch = e.touches ? e.touches[0] : e;
+            const x = touch.clientX - grid.getBoundingClientRect().left;
+            const y = touch.clientY - grid.getBoundingClientRect().top;
+
+            const snappedPoint = snapToGrid(x, y);
+
             if (isDrawingMode) {
-                const touch = e.touches ? e.touches[0] : e;
-                const x = touch.clientX - grid.getBoundingClientRect().left;
-                const y = touch.clientY - grid.getBoundingClientRect().top;
-
-                const snappedPoint = snapToGrid(x, y);
-
                 if (!firstPoint) {
                     firstPoint = snappedPoint;
                 } else {
@@ -203,6 +209,42 @@
 
         grid.addEventListener('click', handleStart);
         grid.addEventListener('touchstart', handleStart);
+
+        grid.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                isZooming = true;
+            }
+        });
+
+        grid.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                isZooming = false;
+            }
+        });
+
+        grid.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const scale = parseFloat(grid.style.transform.replace('scale(', '')) || 1;
+            const newScale = e.deltaY < 0 ? scale * 1.1 : scale * 0.9;
+            grid.style.transform = `scale(${newScale})`;
+        });
+
+        grid.addEventListener('touchmove', (e) => {
+            if (isZooming && e.touches.length === 2) {
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                const initialDist = grid.dataset.initialDist;
+                if (!initialDist) {
+                    grid.dataset.initialDist = dist;
+                    grid.dataset.initialScale = parseFloat(grid.style.transform.replace('scale(', '')) || 1;
+                } else {
+                    const scale = (dist / initialDist) * grid.dataset.initialScale;
+                    grid.style.transform = `scale(${scale})`;
+                }
+            }
+        });
 
         document.getElementById('draw-mode-btn').addEventListener('click', () => {
             isDrawingMode = true;
@@ -222,14 +264,6 @@
                 svg.removeChild(lastLine.previousSibling); // wideLine 제거
                 svg.removeChild(lastLine); // 실제 선 제거
             }
-        });
-
-        document.getElementById('zoom-in-btn').addEventListener('click', () => {
-            grid.style.transform = `scale(${parseFloat(grid.style.transform.replace('scale(', '')) + 0.1 || 1.1})`;
-        });
-
-        document.getElementById('zoom-out-btn').addEventListener('click', () => {
-            grid.style.transform = `scale(${parseFloat(grid.style.transform.replace('scale(', '')) - 0.1 || 0.9})`;
         });
     </script>
 </body>
