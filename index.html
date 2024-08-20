@@ -106,6 +106,7 @@
         let isDrawingMode = true;
         let snapIndicator = null;
         let isZooming = false;
+        let currentScale = 1;
 
         function snapToGrid(x, y) {
             const snappedX = Math.round(x / cellSize) * cellSize;
@@ -113,8 +114,16 @@
             return { x: snappedX, y: snappedY };
         }
 
+        function getTransformedPoint(x, y) {
+            const svgRect = svg.getBoundingClientRect();
+            const offsetX = (x - svgRect.left) / currentScale;
+            const offsetY = (y - svgRect.top) / currentScale;
+            return { x: offsetX, y: offsetY };
+        }
+
         function updateSnapIndicator(x, y) {
-            const snappedPoint = snapToGrid(x, y);
+            const point = getTransformedPoint(x, y);
+            const snappedPoint = snapToGrid(point.x, point.y);
 
             if (!snapIndicator) {
                 snapIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -173,8 +182,8 @@
             if (isZooming) return; // 확대/축소 중일 때는 이동 처리 중지
 
             const touch = e.touches ? e.touches[0] : e;
-            const x = touch.clientX - grid.getBoundingClientRect().left;
-            const y = touch.clientY - grid.getBoundingClientRect().top;
+            const x = touch.clientX;
+            const y = touch.clientY;
 
             if (isDrawingMode) {
                 updateSnapIndicator(x, y);
@@ -189,10 +198,11 @@
             if (isZooming) return; // 확대/축소 중일 때는 그리기 중지
 
             const touch = e.touches ? e.touches[0] : e;
-            const x = touch.clientX - grid.getBoundingClientRect().left;
-            const y = touch.clientY - grid.getBoundingClientRect().top;
+            const x = touch.clientX;
+            const y = touch.clientY;
 
-            const snappedPoint = snapToGrid(x, y);
+            const point = getTransformedPoint(x, y);
+            const snappedPoint = snapToGrid(point.x, point.y);
 
             if (isDrawingMode) {
                 if (!firstPoint) {
@@ -224,9 +234,8 @@
 
         grid.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const scale = parseFloat(grid.style.transform.replace('scale(', '')) || 1;
-            const newScale = e.deltaY < 0 ? scale * 1.1 : scale * 0.9;
-            grid.style.transform = `scale(${newScale})`;
+            currentScale *= e.deltaY < 0 ? 1.1 : 0.9;
+            grid.style.transform = `scale(${currentScale})`;
         });
 
         grid.addEventListener('touchmove', (e) => {
@@ -238,10 +247,10 @@
                 const initialDist = grid.dataset.initialDist;
                 if (!initialDist) {
                     grid.dataset.initialDist = dist;
-                    grid.dataset.initialScale = parseFloat(grid.style.transform.replace('scale(', '')) || 1;
+                    grid.dataset.initialScale = currentScale;
                 } else {
-                    const scale = (dist / initialDist) * grid.dataset.initialScale;
-                    grid.style.transform = `scale(${scale})`;
+                    currentScale = (dist / initialDist) * grid.dataset.initialScale;
+                    grid.style.transform = `scale(${currentScale})`;
                 }
             }
         });
