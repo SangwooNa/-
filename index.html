@@ -199,6 +199,7 @@
         grid.addEventListener('touchmove', handleMove);
 
         function handleDrawing(e) {
+            e.preventDefault(); // 터치 이벤트와 클릭 이벤트가 겹치지 않도록 방지
             if (isDrawingMode) {
                 const x = e.offsetX || e.touches[0].clientX - grid.getBoundingClientRect().left;
                 const y = e.offsetY || e.touches[0].clientY - grid.getBoundingClientRect().top;
