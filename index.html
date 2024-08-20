@@ -102,9 +102,7 @@
         const svg = grid.querySelector('svg');
         const cellSize = 30;
         let firstPoint = null;
-        let lines = [];
         let isDrawingMode = true;
-        let history = [];
         let snapIndicator = null;
 
         function snapToGrid(x, y) {
@@ -157,9 +155,6 @@
 
             svg.appendChild(wideLine);
             svg.appendChild(line);
-
-            lines.push(line);
-            history.push({ type: 'line', line, wideLine });
         }
 
         function handleLineDelete(event) {
@@ -169,16 +164,6 @@
 
                 svg.removeChild(line);
                 svg.removeChild(wideLine);
-
-                lines = lines.filter(l => l !== line);
-                history.push({ type: 'delete', line, wideLine });
-            }
-        }
-
-        function clearActiveRemoveButton() {
-            if (activeRemoveButton) {
-                activeRemoveButton.style.display = 'none';
-                activeRemoveButton = null;
             }
         }
 
@@ -195,14 +180,12 @@
             }
         }
 
-        grid.addEventListener('mousemove', handleMove);
-        grid.addEventListener('touchmove', handleMove);
-
-        function handleDrawing(e) {
-            e.preventDefault(); // 터치 이벤트와 클릭 이벤트가 겹치지 않도록 방지
+        function handleStart(e) {
+            e.preventDefault(); // 기본 터치 동작 방지
             if (isDrawingMode) {
-                const x = e.offsetX || e.touches[0].clientX - grid.getBoundingClientRect().left;
-                const y = e.offsetY || e.touches[0].clientY - grid.getBoundingClientRect().top;
+                const touch = e.touches ? e.touches[0] : e;
+                const x = touch.clientX - grid.getBoundingClientRect().left;
+                const y = touch.clientY - grid.getBoundingClientRect().top;
 
                 const snappedPoint = snapToGrid(x, y);
 
@@ -215,12 +198,14 @@
             }
         }
 
-        grid.addEventListener('click', handleDrawing);
-        grid.addEventListener('touchstart', handleDrawing);
+        grid.addEventListener('mousemove', handleMove);
+        grid.addEventListener('touchmove', handleMove);
+
+        grid.addEventListener('click', handleStart);
+        grid.addEventListener('touchstart', handleStart);
 
         document.getElementById('draw-mode-btn').addEventListener('click', () => {
             isDrawingMode = true;
-            clearActiveRemoveButton();
         });
 
         document.getElementById('delete-mode-btn').addEventListener('click', () => {
@@ -232,16 +217,10 @@
         });
 
         document.getElementById('undo-btn').addEventListener('click', () => {
-            const lastAction = history.pop();
-            if (lastAction) {
-                if (lastAction.type === 'line') {
-                    svg.removeChild(lastAction.line);
-                    svg.removeChild(lastAction.wideLine);
-                } else if (lastAction.type === 'delete') {
-                    svg.appendChild(lastAction.wideLine);
-                    svg.appendChild(lastAction.line);
-                    lines.push(lastAction.line);
-                }
+            const lastLine = svg.lastChild;
+            if (lastLine && lastLine.tagName === 'line') {
+                svg.removeChild(lastLine.previousSibling); // wideLine 제거
+                svg.removeChild(lastLine); // 실제 선 제거
             }
         });
 
