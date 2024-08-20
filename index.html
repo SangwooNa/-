@@ -70,10 +70,15 @@
             stroke: transparent;
             cursor: pointer;
         }
-        .snap-indicator {
+        .snap-indicator, .click-indicator {
             fill: gray;
             opacity: 0.5;
             animation: pulse 1.5s infinite;
+        }
+        .click-indicator {
+            fill: red;
+            opacity: 1;
+            animation: none;
         }
         @keyframes pulse {
             0% {
@@ -134,6 +139,19 @@
 
             snapIndicator.setAttribute('cx', snappedPoint.x);
             snapIndicator.setAttribute('cy', snappedPoint.y);
+        }
+
+        function showClickIndicator(x, y) {
+            const clickIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            clickIndicator.classList.add('click-indicator');
+            clickIndicator.setAttribute('r', 5);
+            clickIndicator.setAttribute('cx', x);
+            clickIndicator.setAttribute('cy', y);
+            svg.appendChild(clickIndicator);
+
+            setTimeout(() => {
+                svg.removeChild(clickIndicator);
+            }, 500); // 0.5초 후에 사라짐
         }
 
         function addLine(x1, y1, x2, y2) {
@@ -203,6 +221,307 @@
 
             const point = getTransformedPoint(x, y);
             const snappedPoint = snapToGrid(point.x, point.y);
+
+            showClickIndicator(snappedPoint.x, snappedPoint.y);
+
+            if (isDrawingMode) {
+                if (!firstPoint) {
+                    firstPoint = snappedPoint;
+                } else {
+                    addLine(firstPoint.x, firstPoint.y, snappedPoint.x, snappedPoint.y);
+                    firstPoint = null;
+                }
+            }
+        }
+
+        grid.addEventListener('mousemove', handleMove);
+        grid.addEventListener('touchmove', handleMove);
+
+        grid.addEventListener('click', handleStart);
+        grid.addEventListener('touchstart', handleStart);
+
+        grid.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                isZooming = true;
+            }
+        });
+
+        grid.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                isZooming = false;
+            }
+        });
+
+        grid.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            currentScale *= e.deltaY < 0 ? 1.1 : 0.9;
+            grid.style.transform = `scale(${currentScale})`;
+        });
+
+        grid.addEventListener('touchmove', (e) => {
+            if (isZooming && e.touches.length === 2) {
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                const initialDist = grid.dataset.initialDist;
+                if (!initialDist) {
+                    grid.dataset.initialDist = dist;
+                    grid.dataset.initialScale = currentScale;
+                } else {
+                    currentScale = (dist / initialDist) * grid.dataset.initialScale;
+                    grid.style.transform = `scale(${currentScale})`;
+                }
+            }
+        });
+
+        document.getElementById('draw-mode-btn').addEventListener('click', () => {
+            isDrawingMode = true;
+        });
+
+        document.getElementById('delete-mode-btn').addEventListener('click', () => {
+            isDrawingMode = false;
+            if (snapIndicator) {
+                snapIndicator.remove();
+                snapIndicator = null;
+            }
+        });
+
+        document.getElementById('undo-btn').addEventListener('click', () => {
+            const lastLine = svg.lastChild;
+            if (lastLine && lastLine.tagName === 'line') {
+                svg.removeChild(lastLine.previousSibling); // wideLine 제거
+                svg.removeChild(lastLine); // 실제 선 제거
+            }
+        });
+    </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>등각투상도 용지</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+            touch-action: manipulation;
+            overflow: hidden;
+        }
+        .toolbar {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            background-color: #f1f1f1;
+            padding: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+        }
+        .toolbar button {
+            padding: 15px 30px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 0 5px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+        }
+        .grid-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: calc(100vh - 60px);
+            background: repeating-linear-gradient(
+                0deg,
+                #ddd,
+                #ddd 1px,
+                transparent 1px,
+                transparent 30px
+            ),
+            repeating-linear-gradient(
+                90deg,
+                #ddd,
+                #ddd 1px,
+                transparent 1px,
+                transparent 30px
+            );
+            cursor: crosshair;
+            transform-origin: center center;
+            overflow: hidden;
+            touch-action: none;
+        }
+        .line {
+            stroke: black;
+            stroke-width: 2px;
+            transition: stroke 0.2s;
+        }
+        .line-hover {
+            stroke: red;
+        }
+        .wide-line {
+            stroke-width: 40px; /* 인식 범위 2배로 확대 */
+            stroke: transparent;
+            cursor: pointer;
+        }
+        .snap-indicator, .click-indicator {
+            fill: gray;
+            opacity: 0.5;
+            animation: pulse 1.5s infinite;
+        }
+        .click-indicator {
+            fill: red;
+            opacity: 1;
+            animation: none;
+        }
+        @keyframes pulse {
+            0% {
+                opacity: 0.5;
+            }
+            50% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0.5;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button id="draw-mode-btn">그리기 모드</button>
+        <button id="delete-mode-btn">삭제 모드</button>
+        <button id="undo-btn">작업 취소</button>
+    </div>
+    <div class="grid-container" id="grid">
+        <svg width="100%" height="100%"></svg>
+    </div>
+
+    <script>
+        const grid = document.getElementById('grid');
+        const svg = grid.querySelector('svg');
+        const cellSize = 30;
+        let firstPoint = null;
+        let isDrawingMode = true;
+        let snapIndicator = null;
+        let isZooming = false;
+        let currentScale = 1;
+
+        function snapToGrid(x, y) {
+            const snappedX = Math.round(x / cellSize) * cellSize;
+            const snappedY = Math.round(y / cellSize) * cellSize;
+            return { x: snappedX, y: snappedY };
+        }
+
+        function getTransformedPoint(x, y) {
+            const svgRect = svg.getBoundingClientRect();
+            const offsetX = (x - svgRect.left) / currentScale;
+            const offsetY = (y - svgRect.top) / currentScale;
+            return { x: offsetX, y: offsetY };
+        }
+
+        function updateSnapIndicator(x, y) {
+            const point = getTransformedPoint(x, y);
+            const snappedPoint = snapToGrid(point.x, point.y);
+
+            if (!snapIndicator) {
+                snapIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                snapIndicator.classList.add('snap-indicator');
+                snapIndicator.setAttribute('r', 5);
+                svg.appendChild(snapIndicator);
+            }
+
+            snapIndicator.setAttribute('cx', snappedPoint.x);
+            snapIndicator.setAttribute('cy', snappedPoint.y);
+        }
+
+        function showClickIndicator(x, y) {
+            const clickIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            clickIndicator.classList.add('click-indicator');
+            clickIndicator.setAttribute('r', 5);
+            clickIndicator.setAttribute('cx', x);
+            clickIndicator.setAttribute('cy', y);
+            svg.appendChild(clickIndicator);
+
+            setTimeout(() => {
+                svg.removeChild(clickIndicator);
+            }, 500); // 0.5초 후에 사라짐
+        }
+
+        function addLine(x1, y1, x2, y2) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', x1);
+            line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2);
+            line.setAttribute('y2', y2);
+            line.classList.add('line');
+
+            const wideLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            wideLine.setAttribute('x1', x1);
+            wideLine.setAttribute('y1', y1);
+            wideLine.setAttribute('x2', x2);
+            wideLine.setAttribute('y2', y2);
+            wideLine.classList.add('wide-line');
+
+            wideLine.addEventListener('click', handleLineDelete);
+            wideLine.addEventListener('touchstart', handleLineDelete);
+
+            wideLine.addEventListener('mouseenter', () => {
+                if (!isDrawingMode) {
+                    line.classList.add('line-hover');
+                }
+            });
+
+            wideLine.addEventListener('mouseleave', () => {
+                line.classList.remove('line-hover');
+            });
+
+            svg.appendChild(wideLine);
+            svg.appendChild(line);
+        }
+
+        function handleLineDelete(event) {
+            if (!isDrawingMode) {
+                const line = event.target.nextSibling; // 실제 라인을 가져옴
+                const wideLine = event.target;
+
+                svg.removeChild(line);
+                svg.removeChild(wideLine);
+            }
+        }
+
+        function handleMove(e) {
+            if (isZooming) return; // 확대/축소 중일 때는 이동 처리 중지
+
+            const touch = e.touches ? e.touches[0] : e;
+            const x = touch.clientX;
+            const y = touch.clientY;
+
+            if (isDrawingMode) {
+                updateSnapIndicator(x, y);
+            } else if (snapIndicator) {
+                snapIndicator.remove();
+                snapIndicator = null;
+            }
+        }
+
+        function handleStart(e) {
+            e.preventDefault(); // 기본 터치 동작 방지
+            if (isZooming) return; // 확대/축소 중일 때는 그리기 중지
+
+            const touch = e.touches ? e.touches[0] : e;
+            const x = touch.clientX;
+            const y = touch.clientY;
+
+            const point = getTransformedPoint(x, y);
+            const snappedPoint = snapToGrid(point.x, point.y);
+
+            showClickIndicator(snappedPoint.x, snappedPoint.y);
 
             if (isDrawingMode) {
                 if (!firstPoint) {
